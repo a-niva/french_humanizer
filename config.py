@@ -12,7 +12,7 @@ REFORM_TEMP   = 0.8      # créativité pour la reformulation
 EVAL_TEMP     = 0.1      # précision pour l'évaluation
 AUDIT_TEMP    = 0.6      # compromis pour l'audit final
 CALIB_TEMP    = 0.3      # analyse de style
-KEEP_ALIVE    = "10m"    # durée de rétention en VRAM
+KEEP_ALIVE    = "5m"    # durée de rétention en VRAM
 
 # --- Pipeline ---
 MAX_ITERATIONS = 3       # passes de reformulation/évaluation

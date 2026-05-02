@@ -94,34 +94,36 @@ def effacer_calibration():
 # Pipeline principal (adapté pour Gradio avec progression)
 # ======================================================================
 
-def lancer_reformulation(texte_source, mode, model_reform, model_eval, progress=gr.Progress()):
-    """Lance le pipeline complet et retourne le résultat + le journal."""
+def lancer_reformulation(texte_source, mode, model_reform, model_eval):
     if not texte_source or not texte_source.strip():
-        return "", "⚠ Collez un texte à reformuler."
+        yield "", "⚠ Collez un texte à reformuler."
+        return
 
     texte_source = texte_source.strip()
     set_models(model_reform, model_eval)
 
-    journal = []
+    log_lines = []
 
     def log(msg):
-        journal.append(msg)
+        log_lines.append(msg)
 
-    # Pré-chargement
-    progress(0, desc="Chargement des modèles...")
+    # Chargement des modèles
+    log("⏳ Chargement des modèles...")
+    yield "", "\n".join(log_lines)   # efface le texte et montre le journal
     try:
         charger_modeles(callback_print=log)
     except Exception as e:
-        return "", f"✗ Erreur de chargement : {e}"
+        yield "", f"✗ Erreur de chargement : {e}"
+        return
 
-    # Boucle reformulation / évaluation
     critique = ""
     meilleur_texte = texte_source
     dernier_score = 0
 
     for i in range(1, MAX_ITERATIONS + 1):
-        progress(i / (MAX_ITERATIONS + 2), desc=f"Passe {i}/{MAX_ITERATIONS}...")
         log(f"--- Passe {i}/{MAX_ITERATIONS} ---")
+        # On signale le début de la reformulation
+        yield meilleur_texte, "\n".join(log_lines)
 
         nouvelle = reformuler(texte_source, critique, mode, _referentiel, _style_profile)
         apercu = nouvelle[:120] + ("..." if len(nouvelle) > 120 else "")
@@ -132,6 +134,7 @@ def lancer_reformulation(texte_source, mode, model_reform, model_eval, progress=
             critique = "La reformulation n'est pas assez naturelle."
             meilleur_texte = nouvelle
             log("  ⚠ Évaluation échouée, on continue.")
+            yield meilleur_texte, "\n".join(log_lines)
             continue
 
         score = eval_json.get("score_humain", 5)
@@ -149,6 +152,9 @@ def lancer_reformulation(texte_source, mode, model_reform, model_eval, progress=
         dernier_score = score
         meilleur_texte = nouvelle
 
+        # Mise à jour immédiate après chaque itération
+        yield meilleur_texte, "\n".join(log_lines)
+
         if passe and score >= SCORE_SEUIL:
             log(f"  ✓ Score ≥ {SCORE_SEUIL}")
             break
@@ -157,15 +163,18 @@ def lancer_reformulation(texte_source, mode, model_reform, model_eval, progress=
             critique = f"Défauts : {', '.join(defauts)}. {commentaire}"
         else:
             critique = f"Améliore la naturalité. {commentaire}"
-        log("  → On itère.")
 
     # Audit final
-    if dernier_score < 10:
-        progress((MAX_ITERATIONS + 1) / (MAX_ITERATIONS + 2), desc="Audit final...")
+    if dernier_score >= 10:
+        log("Score parfait, audit ignoré.")
+    else:
+        log("--- Audit (diagnostic) ---")
+        yield meilleur_texte, "\n".join(log_lines)
+
         if AUDIT_SPLIT:
-            log("--- Audit (diagnostic) ---")
             defauts_residuels = audit_diagnostic(texte_source, meilleur_texte)
             log(f"  {defauts_residuels[:200]}")
+            yield meilleur_texte, "\n".join(log_lines)
 
             log("--- Audit (réécriture) ---")
             meilleur_texte = audit_reecriture(
@@ -176,15 +185,10 @@ def lancer_reformulation(texte_source, mode, model_reform, model_eval, progress=
             meilleur_texte = audit_unique(
                 texte_source, meilleur_texte, mode, _referentiel, _style_profile
             )
-    else:
-        log("Score parfait, audit ignoré.")
 
-    progress(1, desc="Terminé.")
     log(f"--- Score final : {dernier_score}/10 ---")
-
-    return meilleur_texte, "\n".join(journal)
-
-
+    yield meilleur_texte, "\n".join(log_lines)
+    
 # ======================================================================
 # Construction de l'interface
 # ======================================================================
@@ -197,11 +201,7 @@ def construire_ui():
     def val_defaut(defaut, liste):
         return defaut if defaut in liste else liste[0]
 
-    with gr.Blocks(
-        title="Humanizer v2",
-        theme=gr.themes.Soft(),
-        css="footer {display: none !important;}",
-    ) as app:
+    with gr.Blocks(title="Humanizer v2") as app:
 
         gr.Markdown("## ✍️ Humanizer v2 — Reformulateur français")
         gr.Markdown(
@@ -285,7 +285,6 @@ def construire_ui():
                 label="Texte reformulé",
                 lines=12,
                 scale=1,
-                show_copy_button=True,
             )
 
         btn_go = gr.Button("▶ Reformuler", variant="primary", size="lg")
@@ -295,7 +294,6 @@ def construire_ui():
                 label="Détails des passes",
                 lines=15,
                 interactive=False,
-                show_copy_button=True,
             )
 
         btn_go.click(
@@ -313,4 +311,4 @@ def construire_ui():
 
 if __name__ == "__main__":
     app = construire_ui()
-    app.launch(inbrowser=True)
+    app.launch(inbrowser=True, theme=gr.themes.Soft())
