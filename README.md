@@ -1,4 +1,4 @@
-# 🖊️ Humanizer v2
+# 🖊️ French Humanizer 1.0
 
 **Reformulateur de texte français — élimine les patterns d'écriture IA.**
 
